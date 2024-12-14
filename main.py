@@ -11,7 +11,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
-from openai import AsyncAzureOpenAI, OpenAIError
+from openai import AsyncOpenAI, OpenAIError
 from pydantic import BaseModel, HttpUrl, ValidationError
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -21,26 +21,37 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 
 class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
-    AZURE_OPENAI_ENDPOINT: str = os.getenv("AZURE_OPENAI_ENDPOINT")
-    OPENAI_DEPLOYMENT_ID: str = os.getenv("OPENAI_DEPLOYMENT_ID")
-    OPENAI_API_VERSION: str = os.getenv("OPENAI_API_VERSION", "gpt-4o")
-    # Default BATCH_SIZE set to 1; can be set to 10 via environment variable
-    BATCH_SIZE: int = int(os.getenv("BATCH_SIZE", 1))
-    MAX_CONCURRENT_OCR_REQUESTS: int = int(os.getenv("MAX_CONCURRENT_OCR_REQUESTS", 5))
-    MAX_CONCURRENT_PDF_CONVERSION: int = int(os.getenv("MAX_CONCURRENT_PDF_CONVERSION", 4))
+    MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-4-vision-preview")
+    
+    # More robust environment variable parsing
+    @staticmethod
+    def parse_int_env(key: str, default: int) -> int:
+        try:
+            value = os.getenv(key)
+            if value is None:
+                return default
+            value = value.split('#')[0].strip()
+            return int(value)
+        except (ValueError, AttributeError):
+            logger.warning(f"Invalid value for {key}, using default: {default}")
+            return default
+
+    # Use the new parsing method
+    BATCH_SIZE: int = parse_int_env("BATCH_SIZE", 1)
+    MAX_CONCURRENT_OCR_REQUESTS: int = parse_int_env("MAX_CONCURRENT_OCR_REQUESTS", 5)
+    MAX_CONCURRENT_PDF_CONVERSION: int = parse_int_env("MAX_CONCURRENT_PDF_CONVERSION", 4)
 
     @classmethod
     def validate(cls):
+        logger.info(f"BATCH_SIZE env value: '{os.getenv('BATCH_SIZE')}'")
+        
         missing = [
             var
-            for var in [
-                "OPENAI_API_KEY",
-                "AZURE_OPENAI_ENDPOINT",
-                "OPENAI_DEPLOYMENT_ID",
-            ]
+            for var in ["OPENAI_API_KEY"]
             if not getattr(cls, var)
         ]
         if missing:
@@ -53,12 +64,15 @@ Settings.validate()
 
 # Initialize OpenAI client
 try:
-    openai_client = AsyncAzureOpenAI(
-        azure_endpoint=Settings.AZURE_OPENAI_ENDPOINT,
-        api_version=Settings.OPENAI_API_VERSION,
+    openai_client = AsyncOpenAI(
         api_key=Settings.OPENAI_API_KEY,
+        timeout=30.0,
     )
+    # Test the client configuration
+    logger.info(f"Initializing OpenAI client")
+    logger.info(f"Using model: {Settings.MODEL_NAME}")
 except Exception as e:
+    logger.error(f"Failed to initialize OpenAI client: {e}")
     raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
 
 # Initialize FastAPI Application
@@ -368,10 +382,9 @@ async def retry_with_backoff(
 class OCRService:
     def __init__(self):
         try:
-            self.client = AsyncAzureOpenAI(
-                azure_endpoint=Settings.AZURE_OPENAI_ENDPOINT,
-                api_version=Settings.OPENAI_API_VERSION,
+            self.client = AsyncOpenAI(
                 api_key=Settings.OPENAI_API_KEY,
+                timeout=30.0,
             )
         except Exception as e:
             logger.exception(f"Failed to initialize OpenAI client: {e}")
@@ -397,7 +410,7 @@ class OCRService:
                     f"Sending OCR request to OpenAI with {len(image_batch)} images."
                 )
                 response = await self.client.chat.completions.create(
-                    model=Settings.OPENAI_DEPLOYMENT_ID,
+                    model=Settings.MODEL_NAME,
                     messages=messages,
                     temperature=0.1,
                     max_tokens=4000,
