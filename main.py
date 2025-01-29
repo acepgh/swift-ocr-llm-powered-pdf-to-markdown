@@ -160,7 +160,7 @@ def download_pdf(url: str) -> bytes:
         HTTPException: If the download fails or the content is not a PDF.
     """
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, timeout=60)  # Increased timeout to 60 seconds
         response.raise_for_status()
         content_type = response.headers.get("Content-Type", "")
         if "application/pdf" not in content_type:
@@ -397,7 +397,7 @@ class OCRService:
         try:
             self.client = AsyncOpenAI(
                 api_key=Settings.OPENAI_API_KEY,
-                timeout=30.0,
+                timeout=120.0,  # Increased timeout to 2 minutes
             )
         except Exception as e:
             logger.exception(f"Failed to initialize OpenAI client: {e}")
