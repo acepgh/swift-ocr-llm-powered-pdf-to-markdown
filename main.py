@@ -5,6 +5,8 @@ import logging
 import os
 import tempfile
 from typing import Any, Callable, List, Optional, Tuple
+from fastapi import Security, HTTPException
+from fastapi.security.api_key import APIKeyHeader
 
 import fitz  # PyMuPDF
 import requests
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
     MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-4-vision-preview")
+    API_KEY: str = os.getenv("API_KEY", "your-secret-api-key-here")  # Replace with your desired API key
     
     # More robust environment variable parsing
     @staticmethod
@@ -74,6 +77,16 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize OpenAI client: {e}")
     raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
+
+# Initialize API Key security
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    if not api_key_header:
+        raise HTTPException(status_code=401, detail="API Key header is missing")
+    if api_key_header != Settings.API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
+    return api_key_header
 
 # Initialize FastAPI Application
 app = FastAPI(
@@ -529,7 +542,7 @@ ocr_service = OCRService()
 # ----------------------------
 
 @app.post("/ocr", response_model=OCRResponse)
-async def ocr_endpoint(
+async def ocr_endpoint(api_key: str = Security(get_api_key),
     file: Optional[UploadFile] = File(None),
     ocr_request: Optional[OCRRequest] = None,
 ):
