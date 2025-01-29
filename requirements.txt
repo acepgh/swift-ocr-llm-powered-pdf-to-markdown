@@ -7,3 +7,4 @@ openai==1.11.1
 requests==2.31.0
 pydantic==2.6.1
 httpx==0.26.0
+fitz
