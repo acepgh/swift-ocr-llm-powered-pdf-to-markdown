@@ -554,26 +554,8 @@ async def ocr_endpoint(
 ):
     """Process PDF from various input methods."""
     try:
-        # Check content type
-        content_type = request.headers.get("content-type", "")
-        
-        if "application/pdf" in content_type:
-            # Handle direct PDF upload
-            pdf_bytes = await request.body()
-            if not pdf_bytes:
-                raise HTTPException(status_code=400, detail="Empty PDF data")
-        elif "multipart/form-data" in content_type:
-            # Handle form upload
-            if not file:
-                raise HTTPException(status_code=400, detail="No file provided in form data")
-            pdf_bytes = await file.read()
-        elif "application/json" in content_type:
-            # Handle JSON request with URL
-            if not ocr_request or not ocr_request.url:
-                raise HTTPException(status_code=400, detail="No URL provided in JSON request")
-            pdf_bytes = download_pdf(str(ocr_request.url))
-        else:
-            raise HTTPException(status_code=400, detail="Invalid content type")
+        # Retrieve PDF bytes
+        pdf_bytes = await get_pdf_bytes(file, ocr_request)
 
         # Save PDF bytes to temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
@@ -597,6 +579,14 @@ async def ocr_endpoint(
         finally:
             os.remove(tmp_pdf_path)
             logger.info(f"Deleted temporary PDF file {tmp_pdf_path}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Unhandled exception in /ocr endpoint: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred during OCR processing."
+        )
     """
     Perform OCR on a provided PDF file or a PDF from a URL.
 
