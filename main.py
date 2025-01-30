@@ -554,8 +554,15 @@ async def ocr_endpoint(
 ):
     """Process PDF from various input methods."""
     try:
-        # Retrieve PDF bytes
-        pdf_bytes = await get_pdf_bytes(file, ocr_request)
+        content_type = request.headers.get("content-type", "")
+        if content_type == "application/pdf":
+            # Handle direct binary PDF upload
+            pdf_bytes = await request.body()
+            if not pdf_bytes:
+                raise HTTPException(status_code=400, detail="Empty PDF data")
+        else:
+            # Handle form upload or URL
+            pdf_bytes = await get_pdf_bytes(file, ocr_request)
 
         # Save PDF bytes to temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
