@@ -544,7 +544,12 @@ ocr_service = OCRService()
 from fastapi import Request
 
 @app.post("/ocr", response_model=OCRResponse)
-async def process_pdf_bytes(pdf_bytes: bytes) -> OCRResponse:
+async def ocr_endpoint(
+    request: Request,
+    api_key: str = Security(get_api_key),
+    file: Optional[UploadFile] = File(None),
+    ocr_request: Optional[OCRRequest] = None,
+):
     """Process PDF bytes and return OCR response."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
         tmp_pdf_file.write(pdf_bytes)
