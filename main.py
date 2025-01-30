@@ -552,12 +552,36 @@ async def ocr_endpoint(
     file: Optional[UploadFile] = File(None),
     ocr_request: Optional[OCRRequest] = None,
 ):
-    # Check if content type is application/pdf for binary data
-    if request.headers.get("content-type") == "application/pdf":
-        pdf_bytes = await request.body()
-        if not pdf_bytes:
-            raise HTTPException(status_code=400, detail="Empty PDF data")
-        return await process_pdf_bytes(pdf_bytes)
+    """Process PDF from various input methods."""
+    try:
+        if request.headers.get("content-type") == "application/pdf":
+            pdf_bytes = await request.body()
+            if not pdf_bytes:
+                raise HTTPException(status_code=400, detail="Empty PDF data")
+            
+            # Save PDF bytes to temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
+                tmp_pdf_file.write(pdf_bytes)
+                tmp_pdf_path = tmp_pdf_file.name
+                logger.info(f"Saved binary PDF to temporary file {tmp_pdf_path}.")
+                
+            try:
+                # Process the PDF file
+                loop = asyncio.get_event_loop()
+                image_bytes_list = await loop.run_in_executor(None, convert_pdf_to_images_pymupdf, tmp_pdf_path)
+                image_data_urls = encode_images(image_bytes_list)
+                batches = create_batches(image_data_urls, Settings.BATCH_SIZE)
+                extracted_texts = await process_batches(batches)
+                final_text = concatenate_texts(extracted_texts)
+                
+                if not final_text:
+                    raise HTTPException(status_code=500, detail="OCR completed but no text was extracted.")
+                    
+                return OCRResponse(text=final_text)
+            finally:
+                os.remove(tmp_pdf_path)
+                logger.info(f"Deleted temporary PDF file {tmp_pdf_path}.")
+        else:
     """
     Perform OCR on a provided PDF file or a PDF from a URL.
 
