@@ -545,6 +545,7 @@ from fastapi import Request
 
 
 
+@app.post("/ocr", response_model=OCRResponse)
 async def ocr_endpoint(
     request: Request,
     api_key: str = Security(get_api_key),
