@@ -550,9 +550,14 @@ async def ocr_endpoint(
     file: Optional[UploadFile] = File(None),
     ocr_request: Optional[OCRRequest] = None,
 ):
-    """Process PDF bytes and return OCR response."""
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
-        tmp_pdf_file.write(pdf_bytes)
+    """Process PDF from various input methods."""
+    try:
+        if request.headers.get("content-type") == "application/pdf":
+            pdf_bytes = await request.body()
+            if not pdf_bytes:
+                raise HTTPException(status_code=400, detail="Empty PDF data")
+        else:
+            pdf_bytes = await get_pdf_bytes(file, ocr_request)
         tmp_pdf_path = tmp_pdf_file.name
         logger.info(f"Saved PDF to temporary file {tmp_pdf_path}.")
 
