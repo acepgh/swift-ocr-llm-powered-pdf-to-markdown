@@ -543,55 +543,7 @@ ocr_service = OCRService()
 
 from fastapi import Request
 
-@app.post("/ocr", response_model=OCRResponse)
-async def ocr_endpoint(
-    request: Request,
-    api_key: str = Security(get_api_key),
-    file: Optional[UploadFile] = File(None),
-    ocr_request: Optional[OCRRequest] = None,
-):
-    """Process PDF from various input methods."""
-    try:
-        if request.headers.get("content-type") == "application/pdf":
-            pdf_bytes = await request.body()
-            if not pdf_bytes:
-                raise HTTPException(status_code=400, detail="Empty PDF data")
-        else:
-            pdf_bytes = await get_pdf_bytes(file, ocr_request)
-        tmp_pdf_path = tmp_pdf_file.name
-        logger.info(f"Saved PDF to temporary file {tmp_pdf_path}.")
 
-    try:
-        # Convert PDF to images using PyMuPDF with multiprocessing
-        loop = asyncio.get_event_loop()
-        image_bytes_list = await loop.run_in_executor(
-            None, convert_pdf_to_images_pymupdf, tmp_pdf_path
-        )
-
-        # Encode images to base64 data URLs along with page numbers
-        image_data_urls = encode_images(image_bytes_list)
-
-        # Create batches for OCR
-        batches = create_batches(image_data_urls, Settings.BATCH_SIZE)
-
-        # Process OCR batches in parallel
-        extracted_texts = await process_batches(batches)
-
-        # Concatenate extracted texts
-        final_text = concatenate_texts(extracted_texts)
-
-        if not final_text:
-            logger.warning("OCR completed but no text was extracted.")
-            raise HTTPException(
-                status_code=500, detail="OCR completed but no text was extracted."
-            )
-
-        return OCRResponse(text=final_text)
-
-    finally:
-        # Clean up temporary PDF file
-        os.remove(tmp_pdf_path)
-        logger.info(f"Deleted temporary PDF file {tmp_pdf_path}.")
 
 async def ocr_endpoint(
     request: Request,
