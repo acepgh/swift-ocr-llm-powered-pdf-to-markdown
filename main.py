@@ -88,11 +88,22 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
         raise HTTPException(status_code=403, detail="Invalid API Key")
     return api_key_header
 
+from fastapi.middleware.cors import CORSMiddleware
+
 # Initialize FastAPI Application
 app = FastAPI(
     title="PDF OCR API",
     description="API server that converts PDFs to text using OCR with OpenAI's GPT-4 Turbo with Vision model.",
     version="1.0.0",
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific domains
+    allow_credentials=True,
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 # ----------------------------
