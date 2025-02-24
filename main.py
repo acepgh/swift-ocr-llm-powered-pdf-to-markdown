@@ -773,9 +773,179 @@ def concatenate_texts(texts: List[str]) -> str:
     return final_text
 
 # ----------------------------
+# Additional OCR Processing Endpoints
+# ----------------------------
+
+# Create necessary folders
+folders = [
+    "GPT Results",
+    "Raw Tesseract results",
+    "Enhanced GPT and Tesseract results",
+    "Enhanced tesseract results",
+    "Online OCR"
+]
+
+for folder in folders:
+    folder_path = os.path.join(os.getcwd(), folder)
+    os.makedirs(folder_path, exist_ok=True)
+
+# Model for text file response
+class TextFileResponse(BaseModel):
+    final_text: str
+
+@app.post("/GPT_Tesseract_Combined", response_model=TextFileResponse)
+async def combine_gpt_tesseract_text_files(
+    tesseract_file: UploadFile = File(...), gpt_file: UploadFile = File(...)
+):
+    try:
+        tesseract_text = await tesseract_file.read()
+        gpt_text = await gpt_file.read()
+
+        tesseract_text = tesseract_text.decode("utf-8")
+        gpt_text = gpt_text.decode("utf-8")
+
+        conversation = [
+            {"role": "system", "content": "You are a helpful assistant that processes and merges text from two sources: OCR and GPT. Your goal is to create a final document that retains correct values while ensuring proper structure."},
+            {"role": "user", "content": f"""I will provide you with two text inputs:  
+            1. Tesseract OCR Output:  
+            {tesseract_text}  
+            2. GPT Output:  
+            {gpt_text}  
+            Please combine these texts, keeping the correct values from Tesseract while maintaining the structure from GPT."""}
+        ]
+
+        response = await openai_client.chat.completions.create(
+            model=Settings.MODEL_NAME,
+            messages=conversation,
+            temperature=0
+        )
+
+        final_text = response.choices[0].message.content
+        
+        gpt_filename = gpt_file.filename.rsplit('.', 1)[0]
+        folder_path = os.path.join(os.getcwd(), "Enhanced GPT and Tesseract results")
+        final_text_filename = os.path.join(folder_path, f"Combined_results_{gpt_filename}.txt")
+
+        with open(final_text_filename, "w", encoding="utf-8") as final_file:
+            final_file.write(final_text)
+
+        return TextFileResponse(final_text=final_text)
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/enhance_tesseract_text", response_model=TextFileResponse)
+async def enhance_tesseract_text_file(tesseract_file: UploadFile = File(...)):
+    try:
+        file_bytes = await tesseract_file.read()
+        detected_encoding = chardet.detect(file_bytes)['encoding']
+
+        if detected_encoding is None:
+            raise HTTPException(status_code=400, detail="Unable to detect file encoding.")
+
+        try:
+            tesseract_text = file_bytes.decode(detected_encoding)
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail=f"File encoding {detected_encoding} is not supported.")
+
+        if not tesseract_text.strip():
+            raise HTTPException(status_code=400, detail="Uploaded file is empty or contains invalid characters.")
+        
+        conversation = [
+            {"role": "system", "content": "You are a helpful assistant that enhances OCR-extracted text. Your goal is to format and structure the text properly while preserving its accuracy."},
+            {"role": "user", "content": f"Please enhance and format this OCR text:\n{tesseract_text}"}
+        ]
+
+        response = await openai_client.chat.completions.create(
+            model=Settings.MODEL_NAME,
+            messages=conversation,
+            temperature=0
+        )
+
+        final_text = response.choices[0].message.content
+
+        tesseract_filename = tesseract_file.filename.rsplit('.', 1)[0]
+        folder_path = os.path.join(os.getcwd(), "Enhanced tesseract results")
+        final_text_filename = os.path.join(folder_path, f"Enhanced_{tesseract_filename}.txt")
+
+        with open(final_text_filename, "w", encoding="utf-8") as final_file:
+            final_file.write(final_text)
+
+        return TextFileResponse(final_text=final_text)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ocr_online")
+async def ocr_online(file: UploadFile = File(...)):
+    try:
+        original_filename = os.path.splitext(file.filename)[0]
+        pdf_bytes = await file.read()
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
+            tmp_pdf_file.write(pdf_bytes)
+            tmp_pdf_path = tmp_pdf_file.name
+
+        # Initialize Chrome WebDriver
+        chrome_options = webdriver.ChromeOptions()
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        driver = webdriver.Chrome(options=chrome_options)
+
+        try:
+            # Process PDF with online OCR service
+            driver.get("https://www.onlineocr.net/")
+            time.sleep(3)
+
+            # Upload file
+            file_input = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.ID, "fileupload"))
+            )
+            file_input.send_keys(tmp_pdf_path)
+
+            # Configure OCR settings
+            WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.ID, "MainContent_btnOCRConvert"))
+            )
+            
+            language_select = driver.find_element(By.ID, "MainContent_comboLanguages")
+            language_select.send_keys("ENGLISH")
+            
+            output_select = driver.find_element(By.ID, "MainContent_comboOutput")
+            output_select.send_keys("Text Plain (txt)")
+
+            # Start OCR
+            convert_button = driver.find_element(By.ID, "MainContent_btnOCRConvert")
+            convert_button.click()
+
+            # Wait for OCR completion and download
+            WebDriverWait(driver, 30).until(
+                EC.element_to_be_clickable((By.ID, "MainContent_lnkBtnDownloadOutput"))
+            )
+            
+            # Get OCR result text
+            result_text = driver.find_element(By.ID, "MainContent_txtOCRResultText").text
+
+            # Save result
+            output_dir = os.path.join(os.getcwd(), "Online OCR")
+            output_path = os.path.join(output_dir, f"{original_filename}_online_ocr.txt")
+            
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(result_text)
+
+            return FileResponse(output_path, media_type="text/plain", filename=f"{original_filename}_online_ocr.txt")
+
+        finally:
+            driver.quit()
+            os.unlink(tmp_pdf_path)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+# ----------------------------
 # Run the Application
 # ----------------------------
 
 # To run the application, use the following command:
-# uvicorn your_filename:app --reload
-# Replace `your_filename` with the name of this Python file without the `.py` extension.
+# uvicorn main:app --host="0.0.0.0" --port=8080 --reload

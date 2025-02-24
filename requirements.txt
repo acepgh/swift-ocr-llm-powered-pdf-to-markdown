@@ -8,3 +8,15 @@ requests==2.31.0
 pydantic==2.6.1
 httpx==0.26.0
 fitz
+chardet
+opencv-python
+pdf2image
+PyPDF2
+pytesseract
+selenium
+chardet
+opencv-python
+pdf2image
+PyPDF2
+pytesseract
+selenium
