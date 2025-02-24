@@ -795,7 +795,8 @@ class TextFileResponse(BaseModel):
 
 @app.post("/GPT_Tesseract_Combined", response_model=TextFileResponse)
 async def combine_gpt_tesseract_text_files(
-    tesseract_file: UploadFile = File(...), gpt_file: UploadFile = File(...)
+    request: Request,
+    api_key: str = Security(get_api_key)
 ):
     try:
         tesseract_text = await tesseract_file.read()
@@ -835,7 +836,10 @@ async def combine_gpt_tesseract_text_files(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/enhance_tesseract_text", response_model=TextFileResponse)
-async def enhance_tesseract_text_file(tesseract_file: UploadFile = File(...)):
+async def enhance_tesseract_text_file(
+    request: Request,
+    api_key: str = Security(get_api_key)
+):
     try:
         file_bytes = await tesseract_file.read()
         detected_encoding = chardet.detect(file_bytes)['encoding']
@@ -877,7 +881,10 @@ async def enhance_tesseract_text_file(tesseract_file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/ocr_online")
-async def ocr_online(file: UploadFile = File(...)):
+async def ocr_online(
+    request: Request,
+    api_key: str = Security(get_api_key)
+):
     try:
         original_filename = os.path.splitext(file.filename)[0]
         pdf_bytes = await file.read()
