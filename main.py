@@ -29,7 +29,7 @@ class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
     MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-4-vision-preview")
     API_KEY: str = os.getenv("API_KEY", "your-secret-api-key-here")  # Replace with your desired API key
-    
+
     # More robust environment variable parsing
     @staticmethod
     def parse_int_env(key: str, default: int) -> int:
@@ -51,7 +51,7 @@ class Settings:
     @classmethod
     def validate(cls):
         logger.info(f"BATCH_SIZE env value: '{os.getenv('BATCH_SIZE')}'")
-        
+
         missing = [
             var
             for var in ["OPENAI_API_KEY"]
@@ -793,7 +793,7 @@ for folder in folders:
 class TextFileResponse(BaseModel):
     final_text: str
 
-@app.post("/GPT_Tesseract_Combined", response_model=TextFileResponse)
+@app.post("/GPT_Tesseract_Combined", response_model=OCRResponse)
 async def combine_gpt_tesseract_text_files(
     request: Request,
     api_key: str = Security(get_api_key)
@@ -822,7 +822,7 @@ async def combine_gpt_tesseract_text_files(
         )
 
         final_text = response.choices[0].message.content
-        
+
         gpt_filename = gpt_file.filename.rsplit('.', 1)[0]
         folder_path = os.path.join(os.getcwd(), "Enhanced GPT and Tesseract results")
         final_text_filename = os.path.join(folder_path, f"Combined_results_{gpt_filename}.txt")
@@ -830,12 +830,12 @@ async def combine_gpt_tesseract_text_files(
         with open(final_text_filename, "w", encoding="utf-8") as final_file:
             final_file.write(final_text)
 
-        return TextFileResponse(final_text=final_text)
-    
+        return OCRResponse(text=final_text)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/enhance_tesseract_text", response_model=TextFileResponse)
+@app.post("/enhance_tesseract_text", response_model=OCRResponse)
 async def enhance_tesseract_text_file(
     request: Request,
     api_key: str = Security(get_api_key)
@@ -854,10 +854,10 @@ async def enhance_tesseract_text_file(
 
         if not tesseract_text.strip():
             raise HTTPException(status_code=400, detail="Uploaded file is empty or contains invalid characters.")
-        
+
         conversation = [
             {"role": "system", "content": "You are a helpful assistant that enhances OCR-extracted text. Your goal is to format and structure the text properly while preserving its accuracy."},
-            {"role": "user", "content": f"Please enhance and format this OCR text:\n{tesseract_text}"}
+            {"role": "user", "content": f"Please enhance and format this OCRtext:\n{tesseract_text}"}
         ]
 
         response = await openai_client.chat.completions.create(
@@ -875,7 +875,7 @@ async def enhance_tesseract_text_file(
         with open(final_text_filename, "w", encoding="utf-8") as final_file:
             final_file.write(final_text)
 
-        return TextFileResponse(final_text=final_text)
+        return OCRResponse(text=final_text)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -888,7 +888,7 @@ async def ocr_online(
     try:
         original_filename = os.path.splitext(file.filename)[0]
         pdf_bytes = await file.read()
-        
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
             tmp_pdf_file.write(pdf_bytes)
             tmp_pdf_path = tmp_pdf_file.name
@@ -915,10 +915,10 @@ async def ocr_online(
             WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.ID, "MainContent_btnOCRConvert"))
             )
-            
+
             language_select = driver.find_element(By.ID, "MainContent_comboLanguages")
             language_select.send_keys("ENGLISH")
-            
+
             output_select = driver.find_element(By.ID, "MainContent_comboOutput")
             output_select.send_keys("Text Plain (txt)")
 
@@ -930,14 +930,14 @@ async def ocr_online(
             WebDriverWait(driver, 30).until(
                 EC.element_to_be_clickable((By.ID, "MainContent_lnkBtnDownloadOutput"))
             )
-            
+
             # Get OCR result text
             result_text = driver.find_element(By.ID, "MainContent_txtOCRResultText").text
 
             # Save result
             output_dir = os.path.join(os.getcwd(), "Online OCR")
             output_path = os.path.join(output_dir, f"{original_filename}_online_ocr.txt")
-            
+
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(result_text)
 
