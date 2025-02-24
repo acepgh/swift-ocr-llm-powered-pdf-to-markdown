@@ -805,9 +805,33 @@ async def combine_gpt_tesseract_text_files(
             if not pdf_bytes:
                 raise HTTPException(status_code=400, detail="Empty PDF data")
             
-            # Process with both methods and combine results
-            tesseract_text = "Tesseract OCR result placeholder"  # Replace with actual Tesseract processing
-            gpt_text = "GPT OCR result placeholder"  # Replace with actual GPT processing
+            # Save PDF bytes to temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
+                tmp_pdf_file.write(pdf_bytes)
+                tmp_pdf_path = tmp_pdf_file.name
+
+            try:
+                # Get GPT OCR result
+                loop = asyncio.get_event_loop()
+                image_bytes_list = await loop.run_in_executor(None, convert_pdf_to_images_pymupdf, tmp_pdf_path)
+                image_data_urls = encode_images(image_bytes_list)
+                batches = create_batches(image_data_urls, Settings.BATCH_SIZE)
+                gpt_texts = await process_batches(batches)
+                gpt_text = concatenate_texts(gpt_texts)
+
+                # Get Tesseract OCR result using pytesseract
+                import pytesseract
+                from pdf2image import convert_from_path
+                
+                pages = convert_from_path(tmp_pdf_path)
+                tesseract_texts = []
+                for page in pages:
+                    text = pytesseract.image_to_string(page)
+                    tesseract_texts.append(text)
+                tesseract_text = "\n\n".join(tesseract_texts)
+
+            finally:
+                os.remove(tmp_pdf_path)
 
         conversation = [
             {"role": "system", "content": "You are a helpful assistant that processes and merges text from two sources: OCR and GPT. Your goal is to create a final document that retains correct values while ensuring proper structure."},
@@ -845,8 +869,30 @@ async def enhance_tesseract_text_file(
     api_key: str = Security(get_api_key)
 ):
     try:
-        file_bytes = await tesseract_file.read()
-        detected_encoding = chardet.detect(file_bytes)['encoding']
+        content_type = request.headers.get("content-type", "")
+        if content_type == "application/pdf":
+            pdf_bytes = await request.body()
+            if not pdf_bytes:
+                raise HTTPException(status_code=400, detail="Empty PDF data")
+            
+            # Save PDF bytes to temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
+                tmp_pdf_file.write(pdf_bytes)
+                tmp_pdf_path = tmp_pdf_file.name
+
+            try:
+                # Get Tesseract OCR result
+                import pytesseract
+                from pdf2image import convert_from_path
+                
+                pages = convert_from_path(tmp_pdf_path)
+                tesseract_texts = []
+                for page in pages:
+                    text = pytesseract.image_to_string(page)
+                    tesseract_texts.append(text)
+                tesseract_text = "\n\n".join(tesseract_texts)
+            finally:
+                os.remove(tmp_pdf_path)
 
         if detected_encoding is None:
             raise HTTPException(status_code=400, detail="Unable to detect file encoding.")
