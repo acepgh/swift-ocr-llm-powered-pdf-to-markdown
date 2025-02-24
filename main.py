@@ -799,11 +799,15 @@ async def combine_gpt_tesseract_text_files(
     api_key: str = Security(get_api_key)
 ):
     try:
-        tesseract_text = await tesseract_file.read()
-        gpt_text = await gpt_file.read()
-
-        tesseract_text = tesseract_text.decode("utf-8")
-        gpt_text = gpt_text.decode("utf-8")
+        content_type = request.headers.get("content-type", "")
+        if content_type == "application/pdf":
+            pdf_bytes = await request.body()
+            if not pdf_bytes:
+                raise HTTPException(status_code=400, detail="Empty PDF data")
+            
+            # Process with both methods and combine results
+            tesseract_text = "Tesseract OCR result placeholder"  # Replace with actual Tesseract processing
+            gpt_text = "GPT OCR result placeholder"  # Replace with actual GPT processing
 
         conversation = [
             {"role": "system", "content": "You are a helpful assistant that processes and merges text from two sources: OCR and GPT. Your goal is to create a final document that retains correct values while ensuring proper structure."},
