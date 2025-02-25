@@ -92,9 +92,25 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Initialize FastAPI Application
 app = FastAPI(
-    title="PDF OCR API",
-    description="API server that converts PDFs to text using OCR with OpenAI's GPT-4 Turbo with Vision model.",
+    title="Swift OCR API",
+    description="""
+    🚀 PDF OCR API that converts documents to text using multiple OCR methods:
+    
+    ## Features
+    * GPT-4 Vision OCR (Most accurate)
+    * Tesseract OCR (Fast, open-source)
+    * Hybrid approach (Combines both methods)
+    
+    ## Authentication
+    All endpoints require an API key passed via the `X-API-Key` header.
+    
+    ## Input Methods
+    * Upload PDF file directly
+    * Provide PDF URL
+    """,
     version="1.0.0",
+    docs_url="/",
+    redoc_url="/docs"
 )
 
 # Add CORS middleware
@@ -152,6 +168,23 @@ class OCRRequest(BaseModel):
 
 class OCRResponse(BaseModel):
     text: str
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "text": """# Document Title
+                
+## Section 1
+This is a sample extracted text with **bold** and *italic* formatting.
+
+## Section 2
+[Image: A diagram showing workflow steps]
+                
+| Column 1 | Column 2 |
+|----------|----------|
+| Data 1   | Data 2   |"""
+            }
+        }
 
 # ----------------------------
 # Utility Functions
@@ -633,7 +666,16 @@ from fastapi import Request
 
 
 
-@app.post("/ocr", response_model=OCRResponse)
+@app.post("/ocr", response_model=OCRResponse, 
+    summary="Process PDF using GPT-4 Vision",
+    description="""
+    Extract text from a PDF using OpenAI's GPT-4 Vision model.
+    
+    This method provides high-accuracy OCR with:
+    - Markdown formatting
+    - Table structure preservation
+    - Image descriptions
+    """)
 async def ocr_endpoint(
     request: Request,
     api_key: str = Security(get_api_key),
