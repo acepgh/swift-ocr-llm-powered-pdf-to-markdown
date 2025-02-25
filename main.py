@@ -434,7 +434,7 @@ class OCRService:
                     f"Sending OCR request to OpenAI with {len(image_batch)} images."
                 )
                 response = await self.client.chat.completions.create(
-                    model="gpt-4o",  # Hardcoding the model here to ensure it's always correct
+                    model=Settings.MODEL_NAME,
                     messages=messages,
                     temperature=0.1,
                     max_tokens=4000,
