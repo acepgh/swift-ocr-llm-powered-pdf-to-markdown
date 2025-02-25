@@ -799,6 +799,9 @@ async def combine_gpt_tesseract_text_files(
     api_key: str = Security(get_api_key)
 ):
     try:
+        gpt_text = ""
+        tesseract_text = ""
+        
         content_type = request.headers.get("content-type", "")
         if content_type == "application/pdf":
             pdf_bytes = await request.body()
