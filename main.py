@@ -545,8 +545,16 @@ class OCRService:
         logger.info(f"Extracted text length: {len(extracted_text)} characters.")
         return extracted_text
 
-# Initialize OCR Service
+# Initialize OCR Service with explicit OpenAI API key
 ocr_service = OCRService()
+
+# Re-verify API key configuration
+if not Settings.OPENAI_API_KEY:
+    logger.error("OpenAI API key is not configured")
+    raise RuntimeError("OpenAI API key is not configured")
+if not Settings.API_KEY:
+    logger.error("API key for endpoint authorization is not configured")
+    raise RuntimeError("API key for endpoint authorization is not configured")
 
 # ----------------------------
 # API Endpoint
@@ -796,7 +804,7 @@ class TextFileResponse(BaseModel):
 @app.post("/GPT_Tesseract_Combined", response_model=OCRResponse)
 async def combine_gpt_tesseract_text_files(
     request: Request,
-    api_key: str = Security(get_api_key)
+    api_key: str = Security(get_api_key)  # This ensures API_KEY from .env is used for authorization
 ):
     try:
         gpt_text = ""
