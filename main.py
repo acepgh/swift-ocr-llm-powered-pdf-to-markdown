@@ -549,8 +549,85 @@ class OCRService:
 ocr_service = OCRService()
 
 # ----------------------------
-# API Endpoint
+# API Endpoints
 # ----------------------------
+
+@app.get("/ocr/methods")
+async def list_ocr_methods():
+    """List available OCR methods."""
+    return {
+        "methods": {
+            "gpt4v": "Default GPT-4 Vision OCR",
+            "tesseract": "Tesseract OCR",
+            "hybrid": "Hybrid approach combining multiple OCR methods"
+        }
+    }
+
+@app.post("/ocr/tesseract")
+async def ocr_tesseract_endpoint(
+    request: Request,
+    api_key: str = Security(get_api_key),
+    file: Optional[UploadFile] = File(None),
+    ocr_request: Optional[OCRRequest] = None,
+):
+    """Process PDF using Tesseract OCR."""
+    try:
+        import pytesseract
+        from PIL import Image
+        
+        pdf_bytes = await get_pdf_bytes(file, ocr_request)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
+            tmp_pdf_file.write(pdf_bytes)
+            tmp_pdf_path = tmp_pdf_file.name
+            
+        try:
+            # Convert PDF to images
+            loop = asyncio.get_event_loop()
+            image_bytes_list = await loop.run_in_executor(None, convert_pdf_to_images_pymupdf, tmp_pdf_path)
+            
+            texts = []
+            for _, img_bytes in image_bytes_list:
+                img = Image.open(io.BytesIO(img_bytes))
+                text = pytesseract.image_to_string(img)
+                texts.append(text)
+                
+            final_text = "\n\n".join(texts)
+            return OCRResponse(text=final_text)
+        finally:
+            os.remove(tmp_pdf_path)
+    except Exception as e:
+        logger.exception(f"Error in Tesseract OCR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ocr/hybrid")
+async def ocr_hybrid_endpoint(
+    request: Request,
+    api_key: str = Security(get_api_key),
+    file: Optional[UploadFile] = File(None),
+    ocr_request: Optional[OCRRequest] = None,
+):
+    """Process PDF using both GPT-4V and Tesseract, combining results."""
+    try:
+        # Get GPT-4V results
+        gpt_response = await ocr_endpoint(request, api_key, file, ocr_request)
+        gpt_text = gpt_response.text
+        
+        # Get Tesseract results
+        tesseract_response = await ocr_tesseract_endpoint(request, api_key, file, ocr_request)
+        tesseract_text = tesseract_response.text
+        
+        # Combine results with metadata
+        combined_text = f"""
+# GPT-4V Results
+{gpt_text}
+
+# Tesseract Results
+{tesseract_text}
+"""
+        return OCRResponse(text=combined_text)
+    except Exception as e:
+        logger.exception(f"Error in hybrid OCR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 from fastapi import Request
 
