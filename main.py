@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
-    MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-4-vision-preview-v2")
+    MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-4-turbo-preview")
     API_KEY: str = os.getenv("API_KEY", "your-secret-api-key-here")  # Replace with your desired API key
 
     # More robust environment variable parsing
