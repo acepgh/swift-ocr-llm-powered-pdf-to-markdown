@@ -596,7 +596,9 @@ async def list_ocr_methods():
         }
     }
 
-@app.post("/ocr/tesseract")
+@app.post("/ocr/tesseract", response_model=OCRResponse,
+    summary="Process PDF using Tesseract OCR",
+    description="Extract text from a PDF using Tesseract OCR.")
 async def ocr_tesseract_endpoint(
     request: Request,
     api_key: str = Security(get_api_key),
@@ -608,10 +610,20 @@ async def ocr_tesseract_endpoint(
         import pytesseract
         from PIL import Image
         
-        pdf_bytes = await get_pdf_bytes(file, ocr_request)
+        content_type = request.headers.get("content-type", "")
+        if content_type == "application/pdf":
+            # Handle direct binary PDF upload
+            pdf_bytes = await request.body()
+            if not pdf_bytes:
+                raise HTTPException(status_code=400, detail="Empty PDF data")
+        else:
+            # Handle form upload or URL
+            pdf_bytes = await get_pdf_bytes(file, ocr_request)
+            
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
             tmp_pdf_file.write(pdf_bytes)
             tmp_pdf_path = tmp_pdf_file.name
+            logger.info(f"Saved PDF to temporary file {tmp_pdf_path} for Tesseract OCR")
             
         try:
             # Convert PDF to images
@@ -619,18 +631,24 @@ async def ocr_tesseract_endpoint(
             image_bytes_list = await loop.run_in_executor(None, convert_pdf_to_images_pymupdf, tmp_pdf_path)
             
             texts = []
-            for _, img_bytes in image_bytes_list:
+            page_count = len(image_bytes_list)
+            logger.info(f"Processing {page_count} pages with Tesseract OCR")
+            
+            for page_num, img_bytes in image_bytes_list:
+                logger.info(f"Processing page {page_num} with Tesseract OCR")
                 img = Image.open(io.BytesIO(img_bytes))
                 text = pytesseract.image_to_string(img)
-                texts.append(text)
+                texts.append(f"Page {page_num}:\n{text}")
                 
             final_text = "\n\n".join(texts)
+            logger.info(f"Tesseract OCR completed with {len(final_text)} characters extracted")
             return OCRResponse(text=final_text)
         finally:
             os.remove(tmp_pdf_path)
+            logger.info(f"Deleted temporary PDF file {tmp_pdf_path}")
     except Exception as e:
         logger.exception(f"Error in Tesseract OCR: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Tesseract OCR processing failed: {str(e)}")
 
 @app.post("/ocr/hybrid")
 async def ocr_hybrid_endpoint(
@@ -682,7 +700,21 @@ async def ocr_endpoint(
     file: Optional[UploadFile] = File(None),
     ocr_request: Optional[OCRRequest] = None,
 ):
-    """Process PDF from various input methods."""
+    """
+    Perform OCR on a provided PDF file or a PDF from a URL.
+
+    Args:
+        request (Request): The FastAPI request object
+        api_key (str): API key for authentication
+        file (Optional[UploadFile]): The uploaded PDF file.
+        ocr_request (Optional[OCRRequest]): The OCR request containing a PDF URL.
+
+    Returns:
+        OCRResponse: The response containing the extracted text.
+
+    Raises:
+        HTTPException: If input validation fails or processing errors occur.
+    """
     try:
         content_type = request.headers.get("content-type", "")
         if content_type == "application/pdf":
@@ -724,19 +756,6 @@ async def ocr_endpoint(
             status_code=500,
             detail="An unexpected error occurred during OCR processing."
         )
-    """
-    Perform OCR on a provided PDF file or a PDF from a URL.
-
-    Args:
-        file (Optional[UploadFile]): The uploaded PDF file.
-        ocr_request (Optional[OCRRequest]): The OCR request containing a PDF URL.
-
-    Returns:
-        OCRResponse: The response containing the extracted text.
-
-    Raises:
-        HTTPException: If input validation fails or processing errors occur.
-    """
     try:
         # Retrieve PDF bytes
         pdf_bytes = await get_pdf_bytes(file, ocr_request)
