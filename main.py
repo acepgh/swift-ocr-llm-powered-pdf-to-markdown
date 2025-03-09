@@ -610,14 +610,18 @@ async def ocr_tesseract_endpoint(
         import pytesseract
         from PIL import Image
         
-        content_type = request.headers.get("content-type", "")
+        content_type = request.headers.get("content-type", "").lower()
+        logger.info(f"Request content type: {content_type}")
+        
         if content_type == "application/pdf":
             # Handle direct binary PDF upload
             pdf_bytes = await request.body()
             if not pdf_bytes:
                 raise HTTPException(status_code=400, detail="Empty PDF data")
+            logger.info(f"Received binary PDF upload, size: {len(pdf_bytes)} bytes")
         else:
             # Handle form upload or URL
+            logger.info("Processing form upload or URL")
             pdf_bytes = await get_pdf_bytes(file, ocr_request)
             
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
@@ -659,12 +663,43 @@ async def ocr_hybrid_endpoint(
 ):
     """Process PDF using both GPT-4V and Tesseract, combining results."""
     try:
-        # Get GPT-4V results
-        gpt_response = await ocr_endpoint(request, api_key, file, ocr_request)
-        gpt_text = gpt_response.text
-        
-        # Get Tesseract results
-        tesseract_response = await ocr_tesseract_endpoint(request, api_key, file, ocr_request)
+        # For direct binary uploads, we need to create a copy of the request body
+        # since it can only be read once
+        content_type = request.headers.get("content-type", "").lower()
+        if content_type == "application/pdf":
+            pdf_bytes = await request.body()
+            if not pdf_bytes:
+                raise HTTPException(status_code=400, detail="Empty PDF data")
+                
+            # Create a modified request for each OCR method
+            async def get_modified_request():
+                class ModifiedRequest:
+                    def __init__(self, headers, pdf_bytes):
+                        self.headers = headers
+                        self._body = pdf_bytes
+                        
+                    async def body(self):
+                        return self._body
+                        
+                return ModifiedRequest(request.headers, pdf_bytes)
+                
+            # Create two separate requests with the same body
+            gpt_request = await get_modified_request()
+            tesseract_request = await get_modified_request()
+            
+            # Get GPT-4V results
+            gpt_response = await ocr_endpoint(gpt_request, api_key, file, ocr_request)
+            gpt_text = gpt_response.text
+            
+            # Get Tesseract results
+            tesseract_response = await ocr_tesseract_endpoint(tesseract_request, api_key, file, ocr_request)
+        else:
+            # Get GPT-4V results
+            gpt_response = await ocr_endpoint(request, api_key, file, ocr_request)
+            gpt_text = gpt_response.text
+            
+            # Get Tesseract results
+            tesseract_response = await ocr_tesseract_endpoint(request, api_key, file, ocr_request)
         tesseract_text = tesseract_response.text
         
         # Combine results with metadata
@@ -716,14 +751,18 @@ async def ocr_endpoint(
         HTTPException: If input validation fails or processing errors occur.
     """
     try:
-        content_type = request.headers.get("content-type", "")
+        content_type = request.headers.get("content-type", "").lower()
+        logger.info(f"Request content type: {content_type}")
+        
         if content_type == "application/pdf":
             # Handle direct binary PDF upload
             pdf_bytes = await request.body()
             if not pdf_bytes:
                 raise HTTPException(status_code=400, detail="Empty PDF data")
+            logger.info(f"Received binary PDF upload, size: {len(pdf_bytes)} bytes")
         else:
             # Handle form upload or URL
+            logger.info("Processing form upload or URL")
             pdf_bytes = await get_pdf_bytes(file, ocr_request)
 
         # Save PDF bytes to temporary file
