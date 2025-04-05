@@ -29,7 +29,7 @@ class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY")
     MODEL_NAME: str = os.getenv("MODEL_NAME", "gpt-4-vision-preview")
     API_KEY: str = os.getenv("API_KEY", "your-secret-api-key-here")  # Replace with your desired API key
-    
+
     # More robust environment variable parsing
     @staticmethod
     def parse_int_env(key: str, default: int) -> int:
@@ -51,7 +51,7 @@ class Settings:
     @classmethod
     def validate(cls):
         logger.info(f"BATCH_SIZE env value: '{os.getenv('BATCH_SIZE')}'")
-        
+
         missing = [
             var
             for var in ["OPENAI_API_KEY"]
@@ -95,15 +95,15 @@ app = FastAPI(
     title="Swift OCR API",
     description="""
     🚀 PDF OCR API that converts documents to text using multiple OCR methods:
-    
+
     ## Features
     * GPT-4 Vision OCR (Most accurate)
     * Tesseract OCR (Fast, open-source)
     * Hybrid approach (Combines both methods)
-    
+
     ## Authentication
     All endpoints require an API key passed via the `X-API-Key` header.
-    
+
     ## Input Methods
     * Upload PDF file directly
     * Provide PDF URL
@@ -168,18 +168,18 @@ class OCRRequest(BaseModel):
 
 class OCRResponse(BaseModel):
     text: str
-    
+
     class Config:
         schema_extra = {
             "example": {
                 "text": """# Document Title
-                
+
 ## Section 1
 This is a sample extracted text with **bold** and *italic* formatting.
 
 ## Section 2
 [Image: A diagram showing workflow steps]
-                
+
 | Column 1 | Column 2 |
 |----------|----------|
 | Data 1   | Data 2   |"""
@@ -592,7 +592,8 @@ async def list_ocr_methods():
         "methods": {
             "gpt4v": "Default GPT-4 Vision OCR",
             "tesseract": "Tesseract OCR",
-            "hybrid": "Hybrid approach combining multiple OCR methods"
+            "hybrid": "Hybrid approach combining multiple OCR methods",
+            "llm_whisperer": "LLM Whisperer API with layout preservation"
         }
     }
 
@@ -609,10 +610,10 @@ async def ocr_tesseract_endpoint(
     try:
         import pytesseract
         from PIL import Image
-        
+
         content_type = request.headers.get("content-type", "").lower()
         logger.info(f"Request content type: {content_type}")
-        
+
         if content_type == "application/pdf":
             # Handle direct binary PDF upload
             pdf_bytes = await request.body()
@@ -623,27 +624,27 @@ async def ocr_tesseract_endpoint(
             # Handle form upload or URL
             logger.info("Processing form upload or URL")
             pdf_bytes = await get_pdf_bytes(file, ocr_request)
-            
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
             tmp_pdf_file.write(pdf_bytes)
             tmp_pdf_path = tmp_pdf_file.name
             logger.info(f"Saved PDF to temporary file {tmp_pdf_path} for Tesseract OCR")
-            
+
         try:
             # Convert PDF to images
             loop = asyncio.get_event_loop()
             image_bytes_list = await loop.run_in_executor(None, convert_pdf_to_images_pymupdf, tmp_pdf_path)
-            
+
             texts = []
             page_count = len(image_bytes_list)
             logger.info(f"Processing {page_count} pages with Tesseract OCR")
-            
+
             for page_num, img_bytes in image_bytes_list:
                 logger.info(f"Processing page {page_num} with Tesseract OCR")
                 img = Image.open(io.BytesIO(img_bytes))
                 text = pytesseract.image_to_string(img)
                 texts.append(f"Page {page_num}:\n{text}")
-                
+
             final_text = "\n\n".join(texts)
             logger.info(f"Tesseract OCR completed with {len(final_text)} characters extracted")
             return OCRResponse(text=final_text)
@@ -670,38 +671,38 @@ async def ocr_hybrid_endpoint(
             pdf_bytes = await request.body()
             if not pdf_bytes:
                 raise HTTPException(status_code=400, detail="Empty PDF data")
-                
+
             # Create a modified request for each OCR method
             async def get_modified_request():
                 class ModifiedRequest:
                     def __init__(self, headers, pdf_bytes):
                         self.headers = headers
                         self._body = pdf_bytes
-                        
+
                     async def body(self):
                         return self._body
-                        
+
                 return ModifiedRequest(request.headers, pdf_bytes)
-                
+
             # Create two separate requests with the same body
             gpt_request = await get_modified_request()
             tesseract_request = await get_modified_request()
-            
+
             # Get GPT-4V results
             gpt_response = await ocr_endpoint(gpt_request, api_key, file, ocr_request)
             gpt_text = gpt_response.text
-            
+
             # Get Tesseract results
             tesseract_response = await ocr_tesseract_endpoint(tesseract_request, api_key, file, ocr_request)
         else:
             # Get GPT-4V results
             gpt_response = await ocr_endpoint(request, api_key, file, ocr_request)
             gpt_text = gpt_response.text
-            
+
             # Get Tesseract results
             tesseract_response = await ocr_tesseract_endpoint(request, api_key, file, ocr_request)
         tesseract_text = tesseract_response.text
-        
+
         # Combine results with metadata
         combined_text = f"""
 # GPT-4V Results
@@ -723,7 +724,7 @@ from fastapi import Request
     summary="Process PDF using GPT-4 Vision",
     description="""
     Extract text from a PDF using OpenAI's GPT-4 Vision model.
-    
+
     This method provides high-accuracy OCR with:
     - Markdown formatting
     - Table structure preservation
@@ -753,7 +754,7 @@ async def ocr_endpoint(
     try:
         content_type = request.headers.get("content-type", "").lower()
         logger.info(f"Request content type: {content_type}")
-        
+
         if content_type == "application/pdf":
             # Handle direct binary PDF upload
             pdf_bytes = await request.body()
