@@ -597,10 +597,10 @@ async def list_ocr_methods():
         }
     }
 
-@app.post("/ocr/llm_whisperer", response_model=OCRResponse,
-    summary="Process PDF using LLM Whisperer",
-    description="Extract text from a PDF using LLM Whisperer API with layout preservation")
-async def ocr_llm_whisperer_endpoint(
+# @app.post("/ocr/llm_whisperer", response_model=OCRResponse,
+#     summary="Process PDF using LLM Whisperer",
+#     description="Extract text from a PDF using LLM Whisperer API with layout preservation")
+# async def ocr_llm_whisperer_endpoint(
     request: Request,
     api_key: str = Security(get_api_key),
     file: Optional[UploadFile] = File(None),
