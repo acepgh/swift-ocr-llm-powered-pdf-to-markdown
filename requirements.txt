@@ -10,3 +10,4 @@ httpx==0.26.0
 fitz
 Pillow
 pytesseract
+unstract-llmwhisperer-client
