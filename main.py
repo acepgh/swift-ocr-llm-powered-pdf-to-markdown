@@ -597,6 +597,42 @@ async def list_ocr_methods():
         }
     }
 
+@app.post("/ocr/llm_whisperer", response_model=OCRResponse,
+    summary="Process PDF using LLM Whisperer",
+    description="Extract text from a PDF using LLM Whisperer API with layout preservation")
+async def ocr_llm_whisperer_endpoint(
+    request: Request,
+    api_key: str = Security(get_api_key),
+    file: Optional[UploadFile] = File(None),
+    ocr_request: Optional[OCRRequest] = None,
+):
+    """Process PDF using LLM Whisperer API."""
+    try:
+        client = LLMWhispererClientV2()
+        
+        content_type = request.headers.get("content-type", "").lower()
+        if content_type == "application/pdf":
+            pdf_bytes = await request.body()
+            if not pdf_bytes:
+                raise HTTPException(status_code=400, detail="Empty PDF data")
+        else:
+            pdf_bytes = await get_pdf_bytes(file, ocr_request)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf_file:
+            tmp_pdf_file.write(pdf_bytes)
+            tmp_pdf_path = tmp_pdf_file.name
+            
+            try:
+                # Process with LLM Whisperer
+                result = await client.process_document(tmp_pdf_path)
+                return OCRResponse(text=result)
+            finally:
+                os.remove(tmp_pdf_path)
+                
+    except Exception as e:
+        logger.exception(f"Error in LLM Whisperer OCR: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/ocr/tesseract", response_model=OCRResponse,
     summary="Process PDF using Tesseract OCR",
     description="Extract text from a PDF using Tesseract OCR.")
